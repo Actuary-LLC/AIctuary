@@ -1,0 +1,46 @@
+name: Deploy Open WebUI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "AIctuary.yaml"
+      - ".github/workflows/deploy.yaml"
+  workflow_dispatch:
+
+env:
+  STACK_NAME: AIctuary
+  SERVICE_NAME: AIctuary_open-webui
+  OPENAI_API_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+  WEBUI_SECRET_KEY: ${{ secrets.WEBUI_SECRET_KEY }}
+jobs:
+  deploy:
+    runs-on: coral
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Deploy stack
+        run: |
+          docker stack deploy \
+            -c AIctuary.yaml \
+            "$STACK_NAME"
+
+      - name: Wait for convergence
+        run: |
+          for i in $(seq 1 30); do
+            REPLICAS=$(docker service ls \
+              --filter "name=${SERVICE_NAME}" \
+              --format "{{.Replicas}}")
+            [ "$REPLICAS" = "1/1" ] && echo "✅ Done" && exit 0
+            echo "Waiting... ($i/30) — $REPLICAS"
+            if [ "$i" -eq 5 ] || [ $((i % 10)) -eq 0 ]; then
+              docker service ps "${STACK_NAME}_${SERVICE_NAME}" --no-trunc --filter "desired-state=running" 2>/dev/null || true
+              docker service logs --tail 30 "${STACK_NAME}_${SERVICE_NAME}" 2>/dev/null || true
+            fi
+            sleep 5
+          done
+          echo "--- Final logs ---"
+          docker service logs --tail 50 "${STACK_NAME}_${SERVICE_NAME}" 2>/dev/null || true
+          docker service rollback "${STACK_NAME}_${SERVICE_NAME}"
+          exit 1
