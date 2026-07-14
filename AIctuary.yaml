@@ -1,0 +1,33 @@
+version: "3.8"
+
+networks:
+  reverse-proxy:
+    external: true
+  litellm:
+    external: true
+
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:0.10.2
+    networks:
+      - reverse-proxy
+      - litellm
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.aictuary.rule=Host(`aictuary.actuary.dev`)"
+        - "traefik.http.routers.aictuary.entrypoints=websecure"
+        - "traefik.http.routers.aictuary.service=aictuary"
+        - "traefik.http.routers.aictuary.tls.certresolver=myresolver"
+        - "traefik.http.services.aictuary.loadbalancer.server.port=8080"
+        - "traefik.http.routers.aictuary.middlewares=authentik@swarm"
+    environment:
+      - OPENAI_API_BASE_URL=http://litellm_main:4000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - WEBUI_URL=https://aictuary.actuary.dev
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - WEBUI_AUTH_TRUSTED_EMAIL_HEADER=X-authentik-email
+      - WEBUI_AUTH_TRUSTED_NAME_HEADER=X-authentik-name
+      - ENABLE_LOGIN_FORM=false
+    volumes:
+      - /mnt/user/docker/volumes/AIctuary/open-webui:/app/backend/data
